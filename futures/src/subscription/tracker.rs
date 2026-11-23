@@ -92,7 +92,7 @@ where
 
             // TODO: Use bus if/when it supports async
             let (event_sender, event_receiver) =
-                futures::channel::mpsc::channel(100);
+                futures::channel::mpsc::channel(1000);
 
             let mut receiver = receiver.clone();
             let mut stream = recipe.stream(event_receiver.boxed());
@@ -143,17 +143,19 @@ where
     ///
     /// [`Recipe::stream`]: crate::subscription::Recipe::stream
     pub fn broadcast(&mut self, event: Event) {
-        self.subscriptions
-            .values_mut()
-            .filter_map(|connection| connection.listener.as_mut())
-            .for_each(|listener| {
+        for connection in self.subscriptions.values_mut() {
+            if let Some(listener) = connection.listener.as_mut() {
                 if let Err(error) = listener.try_send(event.clone()) {
                     log::warn!(
                         "Error sending event to subscription: {:?}",
                         error
                     );
+                    if error.is_disconnected() {
+                        connection.listener = None;
+                    }
                 }
-            });
+            }
+        }
     }
 }
 
